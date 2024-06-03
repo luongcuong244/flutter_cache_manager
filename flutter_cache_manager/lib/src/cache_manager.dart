@@ -8,6 +8,7 @@ import 'package:flutter_cache_manager/src/cache_store.dart';
 import 'package:flutter_cache_manager/src/storage/cache_object.dart';
 import 'package:flutter_cache_manager/src/web/web_helper.dart';
 import 'package:uuid/uuid.dart';
+import 'package:image/image.dart' as img;
 
 ///Flutter Cache Manager
 ///Copyright (c) 2019 Rene Floor
@@ -69,6 +70,7 @@ class CacheManager implements BaseCacheManager {
   Future<File> getSingleFile(
     String url, {
     String? key,
+    bool? shouldResizeTo512,
     Map<String, String>? headers,
   }) async {
     key ??= url;
@@ -76,7 +78,40 @@ class CacheManager implements BaseCacheManager {
     if (cacheFile != null && cacheFile.validTill.isAfter(DateTime.now())) {
       return cacheFile.file;
     }
-    return (await downloadFile(url, key: key, authHeaders: headers)).file;
+    final downloadedFile = await downloadFile(url, key: key, authHeaders: headers);
+    if (shouldResizeTo512 != null && shouldResizeTo512 == true) {
+      await resizeImage(downloadedFile.file);
+    }
+    return downloadedFile.file;
+  }
+
+  Future<void> resizeImage(File imageFile) async {
+    // Check if the file is an image
+    if (!(await imageFile.exists())) {
+      throw Exception("File does not exist.");
+    }
+
+    // Read the image from file
+    List<int> imageBytes = await imageFile.readAsBytes();
+    Uint8List bytes = Uint8List.fromList(imageBytes);
+
+    // Decode the image
+    img.Image? image = img.decodeImage(bytes);
+    if (image == null) {
+      throw Exception("Invalid image file.");
+    }
+
+    // Check if the image dimensions are already 512x512
+    if (image.width == 512 && image.height == 512) {
+      // If already 512x512, return without doing anything
+      return;
+    }
+
+    // Resize the image to 512x512
+    img.Image resizedImage = img.copyResize(image, width: 512, height: 512);
+
+    // Save the resized image to the original file path
+    await imageFile.writeAsBytes(img.encodePng(resizedImage));
   }
 
   /// Get the file from the cache and/or online, depending on availability and age.
